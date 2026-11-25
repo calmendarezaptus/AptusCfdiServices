@@ -31,14 +31,15 @@ const archivos = req => new ArchivoService(req.params.organizationId, { req });
 // ── Lecturas ─────────────────────────────────────────────────────────────────
 app.get('/:organizationId/cfdi/proveedor', route('Error interno consultando el proveedor de CFDI.', req => cfdi(req).proveedor()));
 app.get('/:organizationId/cfdi/pendientes', route('Error interno consultando las facturas por timbrar.', req => cfdi(req).pendientes(req.query)));
-app.get('/:organizationId/cfdi/preparar/:invoiceId', route('Error interno preparando el CFDI.', req => cfdi(req).preparar(req.params.invoiceId)));
-app.get('/:organizationId/cfdi/preparar/:invoiceId/borrador', archivo('Error interno generando la vista previa.', req => archivos(req).borrador(req.params.invoiceId, req.query.formato || 'pdf')));
-app.get('/:organizationId/cfdi/complemento/preparar/:paymentId', route('Error interno preparando el complemento.', req => cfdi(req).prepararComplemento(req.params.paymentId)));
+app.get('/:organizationId/cfdi/preparar/:invoiceId', route('Error interno preparando el CFDI.', req => cfdi(req).preparar(req.params.invoiceId, req.query)));
+app.get('/:organizationId/cfdi/preparar/:invoiceId/borrador', archivo('Error interno generando la vista previa.', req => archivos(req).borrador(req.params.invoiceId, req.query.formato || 'pdf', req.query)));
+app.get('/:organizationId/cfdi/complemento/preparar/:paymentId', route('Error interno preparando el complemento.', req => cfdi(req).prepararComplemento(req.params.paymentId, req.query)));
 app.get('/:organizationId/pagos-por-complementar', route('Error interno consultando los pagos.', req => cfdi(req).pagos()));
 app.get('/:organizationId/cfdi', route('Error interno consultando los CFDI.', req => cfdi(req).lista(req.query)));
 app.get('/:organizationId/cfdi/:cfdiId', route('Error interno consultando el CFDI.', req => cfdi(req).get(req.params.cfdiId, req.query)));
+app.get('/:organizationId/cfdi/:cfdiId/cancelable', route('Error interno revisando la cancelación.', req => cfdi(req).cancelable(req.params.cfdiId, req.query)));
 app.get('/:organizationId/cfdi/:cfdiId/estatus', route('Error interno consultando el estatus.', req => cfdi(req).estatus(req.params.cfdiId)));
-app.get('/:organizationId/cfdi/:cfdiId/:archivo', archivo('Error interno descargando el archivo.', req => archivos(req).cfdi(req.params.cfdiId, req.params.archivo)));
+app.get('/:organizationId/cfdi/:cfdiId/:archivo', archivo('Error interno descargando el archivo.', req => archivos(req).cfdi(req.params.cfdiId, req.params.archivo, req.query)));
 
 // ── Escrituras (modo prueba) ─────────────────────────────────────────────────
 app.post('/:organizationId/cfdi/timbrar', route('Error interno timbrando.', req => cfdi(req).timbrar(req.body), 202));

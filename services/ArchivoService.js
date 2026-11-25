@@ -1,6 +1,6 @@
 import axios from 'axios';
 import DbConfigService from '../core/DbConfigService.js';
-import { CfdiError } from './CfdiService.js';
+import { CfdiError, validateMonedaTc } from './CfdiService.js';
 
 // Archivos binarios del CFDI (XML, PDF, acuse y el borrador de vista previa). No pasan por
 // core/PrebillApiClient (solo acepta JSON); usan la misma conexión de cm_global_vars.
@@ -51,18 +51,23 @@ export default class ArchivoService {
         return { contentType: formato === 'pdf' ? 'application/pdf' : 'application/xml; charset=utf-8', filename, body: Buffer.from(response.data) };
     }
 
-    // XML, PDF o acuse (PDF) de un CFDI guardado.
-    async cfdi(id, archivo) {
+    // XML, PDF (con la leyenda de cancelación vigente, u `original=1` sin ella) o acuse (PDF o `formato=xml`).
+    async cfdi(id, archivo, query = {}) {
         if (!localId(id)) throw new CfdiError('ID de CFDI inválido.');
         if (!ARCHIVOS.includes(archivo)) throw new CfdiError('Archivo inválido: xml, pdf o acuse.');
-        const formato = archivo === 'xml' ? 'xml' : 'pdf';
-        return this.traer(`/cfdi/${id}/${archivo}`, {}, formato, `CFDI-${id}${archivo === 'acuse' ? '-acuse' : ''}.${formato}`);
+        const params = {};
+        if (archivo === 'pdf' && query.original === '1') params.original = '1';
+        if (archivo === 'acuse' && query.formato === 'xml') params.formato = 'xml';
+        const formato = archivo === 'xml' || params.formato === 'xml' ? 'xml' : 'pdf';
+        const nombre = `CFDI-${id}${archivo === 'acuse' ? '-acuse' : ''}${params.original ? '-original' : ''}.${formato}`;
+        return this.traer(`/cfdi/${id}/${archivo}`, params, formato, nombre);
     }
 
     // Vista previa (borrador sellado sin timbrar): no consume la llave ni timbra.
-    async borrador(invoiceId, formato = 'pdf') {
+    async borrador(invoiceId, formato = 'pdf', opciones = {}) {
         if (!booksId(invoiceId)) throw new CfdiError('ID de factura inválido.');
         if (!['pdf', 'xml'].includes(formato)) throw new CfdiError('Formato inválido: pdf o xml.');
-        return this.traer(`/cfdi/preparar/${invoiceId}`, formato === 'xml' ? { borrador: '1', formato: 'xml' } : { borrador: '1' }, formato, `Borrador-${invoiceId}.${formato}`);
+        const params = { ...validateMonedaTc(opciones), borrador: '1', ...(formato === 'xml' ? { formato: 'xml' } : {}) };
+        return this.traer(`/cfdi/preparar/${invoiceId}`, params, formato, `Borrador-${invoiceId}.${formato}`);
     }
 }

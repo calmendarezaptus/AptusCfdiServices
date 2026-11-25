@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import CfdiService, { validateCancelar, validateComplemento, validateLista, validateTimbrar } from '../services/CfdiService.js';
+import CfdiService, { validateCancelar, validateComplemento, validateLista, validateMonedaTc, validateTimbrar } from '../services/CfdiService.js';
 import ArchivoService from '../services/ArchivoService.js';
 
 const UUID = '843B5A51-A5C8-4CA9-BCC0-396179F37ECC';
@@ -63,4 +63,34 @@ test('archivos: binario con el tipo correcto; errores sin el token', async () =>
     await assert.rejects(err.cfdi('7', 'pdf'), e => e.status === 404 && /todavía/.test(e.message) && !/S3CR3T/.test(e.message));
     const lento = new ArchivoService('636939444', { config, http: { request: async () => { throw Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }); } } });
     await assert.rejects(lento.cfdi('7', 'pdf'), e => e.status === 504);
+});
+
+test('moneda y tipo de cambio: valores conocidos; manual exige TC válido; complementos sin moneda', () => {
+    assert.deepEqual(validateMonedaTc({ moneda: 'mxn', tc_fuente: 'manual', tipo_cambio: '19.5', otro: 1 }), { moneda: 'mxn', tc_fuente: 'manual', tipo_cambio: 19.5 });
+    assert.deepEqual(validateMonedaTc({ tc_fuente: 'banxico' }), { tc_fuente: 'banxico' });
+    assert.throws(() => validateMonedaTc({ tc_fuente: 'manual' }), /Escribe/);
+    assert.throws(() => validateMonedaTc({ tc_fuente: 'books', tipo_cambio: '19' }), /solo se escribe/);
+    assert.throws(() => validateMonedaTc({ tc_fuente: 'manual', tipo_cambio: '19.1234567' }), /6 decimales/);
+    assert.throws(() => validateMonedaTc({ tc_fuente: 'manual', tipo_cambio: '0' }), /mayor que 0/);
+    assert.throws(() => validateMonedaTc({ moneda: 'usd' }), /factura o mxn/);
+    assert.throws(() => validateMonedaTc({ moneda: 'mxn' }, { conMoneda: false }), /complemento/);
+    assert.deepEqual(validateTimbrar({ invoice_id: '1', confirmar: true, moneda: 'factura', tc_fuente: 'manual', tipo_cambio: 22, confirmar_tipo_cambio: true }),
+        { invoice_id: '1', confirmar: true, moneda: 'factura', tc_fuente: 'manual', tipo_cambio: 22, confirmar_tipo_cambio: true });
+    assert.deepEqual(validateComplemento({ payment_id: '9', confirmar: true, tc_fuente: 'banxico', confirmar_tipo_cambio: 'si' }), { payment_id: '9', confirmar: true, tc_fuente: 'banxico' });
+});
+
+test('cancelable y archivos: parámetros limpios', async () => {
+    const calls = [];
+    const s = new CfdiService('636939444', { api: { request: async (m, p, o) => { calls.push([p, o.params]); return {}; } } });
+    await s.cancelable('3', { motivo: '01', sustituto: '843b5a51-a5c8-4ca9-bcc0-396179f37ecc', x: 1 });
+    await s.preparar('446794000031321005', { moneda: 'mxn', tc_fuente: 'banxico' });
+    assert.deepEqual(calls, [['/cfdi/3/cancelable', { motivo: '01', sustituto: '843B5A51-A5C8-4CA9-BCC0-396179F37ECC' }], ['/cfdi/preparar/446794000031321005', { moneda: 'mxn', tc_fuente: 'banxico' }]]);
+    await assert.rejects(s.cancelable('3', { motivo: '09' }), /motivo/);
+    const pedidas = [];
+    const a = new ArchivoService('636939444', { config: { get: async () => ({ endpoint: 'https://x.test', token: 't' }) },
+        http: { request: async o => { pedidas.push([o.url, o.params]); return { headers: { 'content-type': o.params.formato === 'xml' ? 'application/xml' : 'application/pdf' }, data: Buffer.from('x') }; } } });
+    assert.equal((await a.cfdi('3', 'acuse', { formato: 'xml' })).filename, 'CFDI-3-acuse.xml');
+    assert.equal((await a.cfdi('3', 'pdf', { original: '1', formato: 'xml' })).filename, 'CFDI-3-original.pdf');
+    await a.borrador('446794000031321005', 'pdf', { moneda: 'mxn', tc_fuente: 'manual', tipo_cambio: '19.5' });
+    assert.deepEqual(pedidas.map(p => p[1]), [{ formato: 'xml', token: 't' }, { original: '1', token: 't' }, { moneda: 'mxn', tc_fuente: 'manual', tipo_cambio: 19.5, borrador: '1', token: 't' }]);
 });
